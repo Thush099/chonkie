@@ -2,8 +2,9 @@
 
 import pytest
 
+from chonkie.chunker import RecursiveChunker
 from chonkie.refinery import OverlapRefinery
-from chonkie.types import Chunk
+from chonkie.types import Chunk, RecursiveLevel, RecursiveRules
 
 
 @pytest.fixture
@@ -1003,3 +1004,201 @@ def test_overlap_refinery_justified_inplace_false() -> None:
     assert refined_chunks[0].context != ""
     assert refined_chunks[1].context != ""
     assert refined_chunks[2].context != ""
+
+
+def test_overlap_refinery_recursive_whitespace_preserves_spaces() -> None:
+    """Test that recursive overlap with RecursiveLevel(whitespace=True) preserves spaces (#681)."""
+    paragraphs = [
+        (
+            "The policy applies to eligible customers under the following conditions. "
+            "Customers must submit the required documents before the application "
+            "can be reviewed. The responsible department verifies the submitted "
+            "information and checks whether all requirements have been satisfied."
+        ),
+        (
+            "If additional information is required, the customer must provide "
+            "the missing documents within the specified period. The responsible "
+            "department reviews the updated application and records the outcome "
+            "according to the applicable procedures."
+        ),
+        (
+            "The final decision must be documented and communicated to the "
+            "relevant parties. All supporting records must be retained for "
+            "future reference and compliance checks."
+        ),
+    ]
+    text = "\n\n".join(paragraphs)
+
+    rules = RecursiveRules(
+        levels=[
+            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
+            RecursiveLevel(delimiters=[".", "!", "?"], include_delim="prev"),
+            RecursiveLevel(whitespace=True),
+        ],
+    )
+
+    chunker = RecursiveChunker(tokenizer="character", chunk_size=200, rules=rules)
+    chunks = chunker.chunk(text)
+    assert len(chunks) > 2
+
+    for method in ("suffix", "prefix", "justified"):
+        refinery = OverlapRefinery(
+            tokenizer="character",
+            context_size=40,
+            mode="recursive",
+            method=method,
+            rules=rules,
+            merge=True,
+            inplace=False,
+        )
+        refined_chunks = refinery.refine(chunks)
+
+        for chunk in refined_chunks:
+            assert chunk.text in text
+            if method in ("prefix", "suffix") and chunk.context:
+                assert chunk.context in text
+
+
+@pytest.mark.parametrize("include_delim", ["prev", "next", None])
+@pytest.mark.parametrize("method", ["prefix", "suffix", "justified"])
+def test_overlap_refinery_recursive_whitespace_include_delim_modes(
+    include_delim: str | None,
+    method: str,
+) -> None:
+    """Test recursive whitespace overlap across include_delim modes and boundary spaces."""
+    text = "alpha beta gamma delta epsilon zeta eta theta"
+    rules = RecursiveRules(
+        levels=[
+            RecursiveLevel(whitespace=True, include_delim=include_delim),
+            RecursiveLevel(),
+        ],
+    )
+    chunker = RecursiveChunker(
+        tokenizer="character",
+        chunk_size=20,
+        min_characters_per_chunk=1,
+        rules=rules,
+    )
+    chunks = chunker.chunk(text)
+    assert len(chunks) >= 2
+
+    refinery = OverlapRefinery(
+        tokenizer="character",
+        context_size=12,
+        mode="recursive",
+        method=method,
+        rules=rules,
+        merge=True,
+        inplace=False,
+    )
+    refined_chunks = refinery.refine(chunks)
+
+    for i, chunk in enumerate(refined_chunks):
+        assert chunk.text in text
+        if method == "prefix" and i > 0:
+            assert chunk.context
+            assert chunk.context in text
+        elif method == "suffix" and i < len(refined_chunks) - 1:
+            assert chunk.context
+            assert chunk.context in text
+        elif method == "justified":
+            assert chunk.context
+
+
+def test_overlap_refinery_recursive_whitespace_trailing_and_leading_spaces() -> None:
+    """Test that leading/trailing/repeated spaces do not yield empty context or dropped spaces."""
+    rules_prev = RecursiveRules(
+        levels=[
+            RecursiveLevel(whitespace=True, include_delim="prev"),
+        ],
+    )
+    chunks_prev = [
+        Chunk(text="alpha  beta ", start_index=0, end_index=12, token_count=12),
+        Chunk(text="gamma delta", start_index=12, end_index=23, token_count=11),
+    ]
+    refinery_prev = OverlapRefinery(
+        tokenizer="character",
+        context_size=4,
+        mode="recursive",
+        method="prefix",
+        rules=rules_prev,
+        merge=False,
+        inplace=False,
+    )
+    refined_prev = refinery_prev.refine(chunks_prev)
+    assert refined_prev[1].context == "beta "
+
+    rules_next = RecursiveRules(
+        levels=[
+            RecursiveLevel(whitespace=True, include_delim="next"),
+        ],
+    )
+    chunks_next = [
+        Chunk(text="alpha", start_index=0, end_index=5, token_count=5),
+        Chunk(text=" beta gamma", start_index=5, end_index=16, token_count=11),
+    ]
+    refinery_next = OverlapRefinery(
+        tokenizer="character",
+        context_size=4,
+        mode="recursive",
+        method="suffix",
+        rules=rules_next,
+        merge=False,
+        inplace=False,
+    )
+    refined_next = refinery_next.refine(chunks_next)
+    assert refined_next[0].context == " beta"
+
+    # Also verify repeated spaces are preserved when grouped directly
+    chunks_double = [
+        Chunk(text="a  beta", start_index=0, end_index=7, token_count=7),
+        Chunk(text="gamma", start_index=7, end_index=12, token_count=5),
+    ]
+    refinery_double = OverlapRefinery(
+        tokenizer="character",
+        context_size=8,
+        mode="recursive",
+        method="prefix",
+        rules=rules_prev,
+        merge=False,
+        inplace=False,
+    )
+    refined_double = refinery_double.refine(chunks_double)
+    assert refined_double[1].context == "a  beta"
+
+
+def test_overlap_refinery_recursive_zero_float_context_and_empty_delimiters() -> None:
+    """Test recursive mode when float context rounds to 0 or delimiters remove all text."""
+    chunks = [
+        Chunk(text="alpha beta", start_index=0, end_index=10, token_count=2),
+        Chunk(text="gamma delta", start_index=11, end_index=22, token_count=2),
+    ]
+    refinery_small_float = OverlapRefinery(
+        tokenizer="character",
+        context_size=0.25,
+        mode="recursive",
+        method="suffix",
+        inplace=False,
+    )
+    refined_small = refinery_small_float.refine(chunks)
+    assert refined_small[0].context == ""
+
+    rules_only_delim = RecursiveRules(
+        levels=[RecursiveLevel(delimiters=[". "], include_delim=None)],
+    )
+    chunks_delim = [
+        Chunk(text="first", start_index=0, end_index=5, token_count=5),
+        Chunk(text=". ", start_index=5, end_index=7, token_count=2),
+    ]
+    refinery_delim = OverlapRefinery(
+        tokenizer="character",
+        context_size=4,
+        mode="recursive",
+        method="suffix",
+        rules=rules_only_delim,
+        inplace=False,
+    )
+    refined_delim = refinery_delim.refine(chunks_delim)
+    assert refined_delim[0].context == ""
+
+

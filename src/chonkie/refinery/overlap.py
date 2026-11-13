@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal, Union
 
+from chonkie.chunker.base import split_text_by_delimiters
 from chonkie.logger import get_logger
 from chonkie.pipeline import refinery
 from chonkie.refinery.base import BaseRefinery
@@ -110,7 +111,12 @@ class OverlapRefinery(BaseRefinery):
         """Split the text into chunks using the delimiters."""
         # At every delimiter, replace it with the sep
         if recursive_level.whitespace:
-            splits = text.split(" ")
+            splits = split_text_by_delimiters(
+                text,
+                delimiters=" ",
+                include_delim=recursive_level.include_delim or "prev",
+                min_chars=1,
+            )
         elif recursive_level.delimiters:
             if recursive_level.include_delim == "prev":
                 for delimiter in recursive_level.delimiters:
@@ -210,7 +216,7 @@ class OverlapRefinery(BaseRefinery):
             The overlap context.
 
         """
-        if text == "":
+        if text == "" or effective_context_size <= 0:
             return ""
 
         # Check if we've exceeded the available recursive levels
@@ -222,6 +228,8 @@ class OverlapRefinery(BaseRefinery):
         if recursive_level is None:
             return text
         splits = self._split_text(text, recursive_level, effective_context_size)
+        if not splits:
+            return ""
 
         if method == "prefix":
             splits = splits[::-1]
