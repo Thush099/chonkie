@@ -49,6 +49,8 @@ class OverlapRefinery(BaseRefinery):
 
         """
         # Check if the context size is a valid number
+        if isinstance(context_size, bool) or not isinstance(context_size, (int, float)):
+            raise ValueError("Context size must be a positive integer or a fraction between 0 and 1.")
         if isinstance(context_size, float) and (
             not math.isfinite(context_size) or context_size <= 0 or context_size > 1
         ):

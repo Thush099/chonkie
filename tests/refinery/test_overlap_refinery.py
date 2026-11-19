@@ -45,6 +45,10 @@ def test_overlap_refinery_initialization_with_invalid_context_size() -> None:
     with pytest.raises(ValueError, match="Context size"):
         OverlapRefinery(context_size=float("nan"))
 
+    for invalid_size in ("2", None, 0.5 + 0j):
+        with pytest.raises(ValueError, match="Context size"):
+            OverlapRefinery(context_size=invalid_size)
+
     # Booleans are integers in Python but are not meaningful context sizes.
     with pytest.raises(ValueError, match="Context size"):
         OverlapRefinery(context_size=True)
