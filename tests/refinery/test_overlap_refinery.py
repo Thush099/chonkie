@@ -94,6 +94,23 @@ def test_overlap_refinery_initialization_with_invalid_inplace() -> None:
         OverlapRefinery(inplace="invalid")
 
 
+def test_overlap_refinery_initialization_with_invalid_rules() -> None:
+    """Invalid rules must fail clearly at construction, not deep in recursion."""
+    for invalid_rules in (None, "rules", 5, {"a": 1}, [1, 2], [RecursiveLevel(), "bad"]):
+        with pytest.raises(ValueError, match="Rules"):
+            OverlapRefinery(mode="recursive", rules=invalid_rules)
+
+
+def test_overlap_refinery_accepts_rules_variants() -> None:
+    """A RecursiveRules instance or a sequence of RecursiveLevel objects is valid."""
+    refinery = OverlapRefinery(mode="recursive", rules=RecursiveRules())
+    assert len(refinery.rules) > 0
+
+    levels = [RecursiveLevel(delimiters=[". "]), RecursiveLevel(whitespace=True)]
+    list_refinery = OverlapRefinery(mode="recursive", rules=levels)
+    assert list(list_refinery.rules) == levels
+
+
 def test_overlap_refinery_refine_empty_chunks() -> None:
     """Test the OverlapRefinery.refine method with empty chunks."""
     refinery = OverlapRefinery()

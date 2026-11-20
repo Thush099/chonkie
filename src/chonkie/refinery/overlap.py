@@ -65,6 +65,16 @@ class OverlapRefinery(BaseRefinery):
             raise ValueError("Merge must be a boolean.")
         if not isinstance(inplace, bool):
             raise ValueError("Inplace must be a boolean.")
+        if not (
+            isinstance(rules, RecursiveRules)
+            or (
+                isinstance(rules, (list, tuple))
+                and all(isinstance(level, RecursiveLevel) for level in rules)
+            )
+        ):
+            raise ValueError(
+                "Rules must be a RecursiveRules instance or a sequence of RecursiveLevel objects."
+            )
 
         # Initialize the refinery
         self.tokenizer = AutoTokenizer(tokenizer)
