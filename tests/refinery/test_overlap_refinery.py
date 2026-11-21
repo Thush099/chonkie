@@ -41,6 +41,18 @@ def test_overlap_refinery_initialization() -> None:
 
 def test_overlap_refinery_initialization_with_invalid_context_size() -> None:
     """Test the OverlapRefinery initialization with invalid context size."""
+    # Test with non-finite float
+    with pytest.raises(ValueError, match="Context size"):
+        OverlapRefinery(context_size=float("nan"))
+
+    for invalid_size in ("2", None, 0.5 + 0j):
+        with pytest.raises(ValueError, match="Context size"):
+            OverlapRefinery(context_size=invalid_size)
+
+    # Booleans are integers in Python but are not meaningful context sizes.
+    with pytest.raises(ValueError, match="Context size"):
+        OverlapRefinery(context_size=True)
+
     # Test with negative float
     with pytest.raises(ValueError):
         OverlapRefinery(context_size=-0.5)
@@ -80,6 +92,23 @@ def test_overlap_refinery_initialization_with_invalid_inplace() -> None:
     """Test the OverlapRefinery initialization with invalid inplace."""
     with pytest.raises(ValueError):
         OverlapRefinery(inplace="invalid")
+
+
+def test_overlap_refinery_initialization_with_invalid_rules() -> None:
+    """Invalid rules must fail clearly at construction, not deep in recursion."""
+    for invalid_rules in (None, "rules", 5, {"a": 1}, [1, 2], [RecursiveLevel(), "bad"]):
+        with pytest.raises(ValueError, match="Rules"):
+            OverlapRefinery(mode="recursive", rules=invalid_rules)
+
+
+def test_overlap_refinery_accepts_rules_variants() -> None:
+    """A RecursiveRules instance or a sequence of RecursiveLevel objects is valid."""
+    refinery = OverlapRefinery(mode="recursive", rules=RecursiveRules())
+    assert len(refinery.rules) > 0
+
+    levels = [RecursiveLevel(delimiters=[". "]), RecursiveLevel(whitespace=True)]
+    list_refinery = OverlapRefinery(mode="recursive", rules=levels)
+    assert list(list_refinery.rules) == levels
 
 
 def test_overlap_refinery_refine_empty_chunks() -> None:
@@ -393,6 +422,20 @@ def test_overlap_refinery_recursive_exceeding_levels() -> None:
     # Check that it completes successfully
     assert len(refined_chunks) == 2
     assert hasattr(refined_chunks[0], "context")
+
+
+def test_recursive_overlap_includes_splits_that_exactly_fill_context_size() -> None:
+    rules = RecursiveRules(
+        levels=[RecursiveLevel(delimiters=["|"], include_delim=None)],
+    )
+    refinery = OverlapRefinery(
+        tokenizer="character",
+        context_size=5,
+        mode="recursive",
+        rules=rules,
+    )
+
+    assert refinery._recursive_overlap("abc|de", 0, "suffix", 5) == "abcde"
 
 
 def test_overlap_refinery_recursive_empty_text() -> None:

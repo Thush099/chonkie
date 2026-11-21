@@ -1,5 +1,6 @@
 """Refinery for adding overlap to chunks."""
 
+import math
 from functools import lru_cache
 from typing import Literal, Union
 
@@ -48,9 +49,13 @@ class OverlapRefinery(BaseRefinery):
 
         """
         # Check if the context size is a valid number
-        if isinstance(context_size, float) and (context_size <= 0 or context_size > 1):
+        if isinstance(context_size, bool) or not isinstance(context_size, (int, float)):
+            raise ValueError("Context size must be a positive integer or a fraction between 0 and 1.")
+        if isinstance(context_size, float) and (
+            not math.isfinite(context_size) or context_size <= 0 or context_size > 1
+        ):
             raise ValueError("Context size must be a number between 0 and 1.")
-        elif isinstance(context_size, int) and context_size <= 0:
+        elif isinstance(context_size, bool) or (isinstance(context_size, int) and context_size <= 0):
             raise ValueError("Context size must be a positive integer.")
         if mode not in ["token", "recursive"]:
             raise ValueError("Mode must be one of: token, recursive.")
@@ -60,6 +65,16 @@ class OverlapRefinery(BaseRefinery):
             raise ValueError("Merge must be a boolean.")
         if not isinstance(inplace, bool):
             raise ValueError("Inplace must be a boolean.")
+        if not (
+            isinstance(rules, RecursiveRules)
+            or (
+                isinstance(rules, (list, tuple))
+                and all(isinstance(level, RecursiveLevel) for level in rules)
+            )
+        ):
+            raise ValueError(
+                "Rules must be a RecursiveRules instance or a sequence of RecursiveLevel objects."
+            )
 
         # Initialize the refinery
         self.tokenizer = AutoTokenizer(tokenizer)
@@ -165,7 +180,7 @@ class OverlapRefinery(BaseRefinery):
         group = []
         current_token_count = 0
         for token_count, split in zip(token_counts, splits):
-            if current_token_count + token_count < effective_context_size:
+            if current_token_count + token_count <= effective_context_size:
                 group.append(split)
                 current_token_count += token_count
             else:
