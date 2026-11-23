@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chunk-Context Workbench — chonkie overlap refinery</title>
+<style>
+  :root {
+    --bg: #f2f4f6;
+    --card: #ffffff;
+    --ink: #18212b;
+    --ink-soft: #5a6673;
+    --rule: #ccd5dd;
+    --ctx: #f3b53f;
+    --ctx-soft: #fdf1d6;
+    --accent: #2b5f8a;
+    --good: #2f8f6b;
+    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); }
+  header { padding: 30px 26px 20px; background: linear-gradient(120deg, #2b5f8a, #2f7d8a); color: #e9f2f8; }
+  header h1 { margin: 0; font: 600 clamp(22px, 3.4vw, 32px)/1.12 var(--sans); letter-spacing: -.015em; }
+  header h1 em { font-style: normal; color: var(--ctx); }
+  header p { margin: 9px 0 0; max-width: 72ch; color: #cfe0ec; font-size: 14.5px; }
+  .layout { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 20px; padding: 20px 26px 56px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: 5px; padding: 18px 20px; }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 { margin: 0 0 3px; font: 600 17px/1.25 var(--sans); }
+  .meta { margin: 0 0 12px; color: var(--ink-soft); font-size: 12.5px; }
+  label { display: block; font: 600 11px/1 var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); margin: 13px 0 6px; }
+  textarea, input[type="number"], select {
+    width: 100%; border: 1px solid var(--rule); border-radius: 4px; background: #fdfdfe;
+    color: var(--ink); font: 12.5px/1.5 var(--mono); padding: 8px 10px;
+  }
+  textarea { resize: vertical; min-height: 130px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  textarea:focus-visible, input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btnrow { margin-top: 16px; }
+  button { width: 100%; border: 0; border-radius: 4px; cursor: pointer; padding: 12px 14px; font: 600 14.5px/1 var(--sans); background: var(--accent); color: #fff; }
+  button:hover { background: #224b6e; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .error { margin-top: 12px; padding: 10px 12px; border-left: 3px solid #c0483c; background: #f6e2df; color: #c0483c; font-size: 13px; white-space: pre-wrap; }
+
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+  .stat { background: var(--card); padding: 13px 15px; }
+  .stat .k { font: 600 10.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  .stat .v { font: 600 23px/1.15 var(--mono); margin-top: 5px; font-variant-numeric: tabular-nums; }
+
+  .chunk-card { border: 1px solid var(--rule); border-radius: 5px; padding: 14px 16px; background: var(--card); }
+  .chunk-card + .chunk-card { margin-top: 12px; }
+  .chunk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 9px; }
+  .chunk-head .idx { font: 600 13px var(--mono); color: var(--ink-soft); }
+  .chunk-head .stats { font: 11px var(--mono); color: var(--ink-soft); }
+  .ctx-block {
+    background: var(--ctx-soft); border-left: 3px solid var(--ctx); border-radius: 3px;
+    padding: 8px 11px; margin-bottom: 9px; font: 12px/1.5 var(--mono); color: #6b4e12;
+  }
+  .ctx-block .tag { font: 600 9.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ctx); display: block; margin-bottom: 3px; }
+  .body-block { padding: 8px 11px; border-left: 3px solid var(--accent); border-radius: 3px; background: #eef3f7; font: 12px/1.5 var(--mono); color: var(--ink); }
+  .body-block .tag { font: 600 9.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 3px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font: 600 10.5px/1.7 var(--sans); }
+  .badge.none { background: #eef1f4; color: var(--ink-soft); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--accent); font-weight: 600; }
+  pre { background: #18212b; color: #dfe4ea; padding: 12px; border-radius: 4px; overflow: auto; font: 11px/1.5 var(--mono); max-height: 300px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chunk-context <em>workbench</em></h1>
+  <p>See how a text splits into chunks and how the overlap refinery stitches them back
+  together with context. The highlighted prefix on each chunk is the overlap that lets a
+  downstream model read across chunk boundaries without losing the thread.</p>
+</header>
+
+<div class="layout">
+  <form class="panel" id="form">
+    <h2>Input</h2>
+    <p class="meta">Runs <code>RecursiveChunker</code> + <code>OverlapRefinery</code> from <code>chonkie.refinery</code>.</p>
+
+    <label for="text">Text</label>
+    <textarea id="text">The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump. The five boxing wizards jump quickly. Sphinx of black quartz, judge my vow. Jackdaws love my big sphinx of quartz. The quick brown fox jumps over the lazy dog again. Pack my box with five dozen liquor jugs once more.</textarea>
+
+    <div class="two">
+      <div>
+        <label for="chunk_size">Chunk size (chars)</label>
+        <input type="number" id="chunk_size" value="120" min="32" step="8">
+      </div>
+      <div>
+        <label for="context_size">Context size (fraction)</label>
+        <input type="number" id="context_size" value="0.25" min="0.05" max="0.95" step="0.05">
+      </div>
+    </div>
+
+    <div class="two">
+      <div>
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="token" selected>token</option>
+          <option value="recursive">recursive</option>
+        </select>
+      </div>
+      <div>
+        <label for="method">Method</label>
+        <select id="method">
+          <option value="suffix" selected>suffix</option>
+          <option value="prefix">prefix</option>
+          <option value="justified">justified</option>
+        </select>
+      </div>
+    </div>
+
+    <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">
+      <input type="checkbox" id="merge"> merge chunks after attaching context
+    </label>
+
+    <div class="btnrow">
+      <button type="submit" id="run">Refine chunks</button>
+    </div>
+    <div class="error" id="error" hidden></div>
+  </form>
+
+  <section>
+    <div class="panel" id="summary-panel" hidden>
+      <div class="statgrid" id="statgrid"></div>
+    </div>
+
+    <div class="panel" id="chunks-panel" hidden>
+      <h2>Refined chunks</h2>
+      <p class="meta"><span style="display:inline-block;width:10px;height:10px;background:var(--ctx);border-radius:2px;vertical-align:middle"></span>
+        overlap context &nbsp;·&nbsp; <span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;vertical-align:middle"></span> chunk body</p>
+      <div id="chunks"></div>
+    </div>
+
+    <details id="raw-details" hidden>
+      <summary>Show raw JSON result</summary>
+      <pre id="raw"></pre>
+    </details>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  function renderSummary(r) {
+    const stats = [
+      ["Chunks", r.chunk_count],
+      ["Overlap chars", r.total_context_chars],
+      ["Mode", r.mode],
+      ["Method", r.method],
+    ];
+    $("statgrid").innerHTML = stats.map(([k, v]) =>
+      `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+    $("summary-panel").hidden = false;
+  }
+
+  function renderChunks(r) {
+    $("chunks").innerHTML = r.chunks.map((c) => {
+      const hasCtx = c.context_len > 0;
+      return `<div class="chunk-card">
+        <div class="chunk-head">
+          <div class="idx">chunk ${c.index}</div>
+          <div class="stats">${c.token_count} tokens · chars [${c.start_index}, ${c.end_index}) · context ${c.context_len}</div>
+        </div>
+        ${hasCtx
+          ? `<div class="ctx-block"><span class="tag">overlap context</span>${esc(c.context)}</div>`
+          : `<div class="ctx-block" style="background:#f4f6f8;border-color:var(--rule);color:var(--ink-soft)"><span class="tag" style="color:var(--ink-soft)">overlap context</span><span class="badge none">none — no neighbor to draw from</span></div>`}
+        <div class="body-block"><span class="tag">chunk body</span>${esc(c.text)}</div>
+      </div>`;
+    }).join("");
+    $("chunks-panel").hidden = false;
+  }
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("run");
+    btn.disabled = true; btn.textContent = "Refining…";
+    $("error").hidden = true;
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: $("text").value,
+          chunk_size: Number($("chunk_size").value),
+          context_size: Number($("context_size").value),
+          mode: $("mode").value,
+          method: $("method").value,
+          merge: $("merge").checked,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || `Request failed (${res.status})`);
+      renderSummary(payload);
+      renderChunks(payload);
+      $("raw").textContent = JSON.stringify(payload, null, 2);
+      $("raw-details").hidden = false;
+    } catch (err) {
+      $("error").textContent = err.message;
+      $("error").hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = "Refine chunks";
+    }
+  });
+
+  $("form").dispatchEvent(new Event("submit"));
+})();
+</script>
+</body>
+</html>

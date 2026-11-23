@@ -413,3 +413,16 @@ If you use Chonkie in your research, please cite it as follows:
   howpublished = {\url{https://github.com/chonkie-inc/chonkie}},
 }
 ```
+
+## Web UI
+
+A local chunk-context workbench drives the real overlap refinery in the browser:
+
+```bash
+python ui/server.py            # http://127.0.0.1:8134
+```
+
+Split a text into chunks and see how `OverlapRefinery` stitches them back together with
+overlap context — the highlighted prefix on each chunk is the overlap that lets a downstream
+model read across chunk boundaries. The server uses only the standard library and calls
+`RecursiveChunker` + `OverlapRefinery` from `chonkie.refinery`.
